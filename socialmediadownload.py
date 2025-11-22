@@ -7,6 +7,7 @@ import yarl
 import requests
 import asyncio
 import concurrent.futures
+import os
 from urllib.parse import urljoin
 
 from typing import Type
@@ -16,6 +17,10 @@ from mautrix.types.event.message import BaseFileInfo, Format, TextMessageEventCo
 from mautrix.util.config import BaseProxyConfig, ConfigUpdateHelper
 from maubot import Plugin, MessageEvent
 from maubot.handlers import event
+
+from yt_dlp import YoutubeDL
+YOUTUBE_DOWNLOADS_PATH = './yt-dlp-downloads'
+os.mkdir(YOUTUBE_DOWNLOADS_PATH)
 
 class Config(BaseProxyConfig):
     def do_update(self, helper: ConfigUpdateHelper) -> None:
@@ -185,6 +190,37 @@ class SocialMediaDownloadPlugin(Plugin):
             filename = f"{video_id}.jpg"
             uri = await self.client.upload_media(thumbnail, mime_type='image/jpeg', filename=filename)
             await self.client.send_image(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='image/jpeg'))
+        options = {
+            'format': 'bestaudio/best',
+            'outtmpl': os.path.join(YOUTUBE_DOWNLOADS_PATH, '%(title)s.%(ext)s'),  # Save in downloads folder
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+            'quiet': False,
+            'noplaylist': True,
+        }
+        if self.config["youtube.download"]:
+            info = None
+            with YoutubeDL(options) as ydl:
+                i = ydl.extract_info(url, download=False)
+                info = ydl.sanitize_info(i)
+                ydl.download([url])
+            filename = '%(title)s.%(ext)s'.format(info['title'], info['ext'])
+            uri = await self.client.upload_media(thumbnail, mime_type='video/webm', filename=filename)
+            await self.client.send_file(evt.room_id, url=uri, file_name=filename, info=ImageInfo(mimetype='video/webm'))
+                    
+        # if self.config["youtube.stream"]:
+        #     video_data = []
+        #     with YoutubeDL(options) as ydl:
+        #         with ydl.urlopen(url) as stream:
+        #             while True:
+        #                 data = stream.read(4 * 1024 * 1024)
+        #                 video_data.append(data)
+            
+
+
 
     async def handle_instagram(self, evt, url_tup):
         L = instaloader.Instaloader(user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
